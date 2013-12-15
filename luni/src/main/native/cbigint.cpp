@@ -571,16 +571,19 @@ toDoubleHighPrecision (uint64_t * arg, int32_t length)
   int32_t highBit;
   uint64_t mantissa, test64;
   uint32_t test;
-  jdouble result;
+  union {
+      jdouble dbl;
+      uint64_t ui;
+  } result;
 
   while (length > 0 && arg[length - 1] == 0)
     --length;
 
   if (length == 0)
-    result = 0.0;
+    result.dbl = 0.0;
   else if (length > 16)
     {
-      DOUBLE_TO_LONGBITS (result) = EXPONENT_MASK;
+      result.ui = EXPONENT_MASK;
     }
   else if (length == 1)
     {
@@ -589,20 +592,20 @@ toDoubleHighPrecision (uint64_t * arg, int32_t length)
         {
           highBit = 53 - highBit;
           mantissa = *arg << highBit;
-          DOUBLE_TO_LONGBITS (result) =
+          result.ui =
             CREATE_DOUBLE_BITS (mantissa, -highBit);
         }
       else
         {
           highBit -= 53;
           mantissa = *arg >> highBit;
-          DOUBLE_TO_LONGBITS (result) =
+          result.ui =
             CREATE_DOUBLE_BITS (mantissa, highBit);
 
           /* perform rounding, round to even in case of tie */
           test = (LOW_U32_FROM_PTR (arg) << (11 - highBit)) & 0x7FF;
           if (test > 0x400 || ((test == 0x400) && (mantissa & 1)))
-            DOUBLE_TO_LONGBITS (result) = DOUBLE_TO_LONGBITS (result) + 1;
+            result.ui = result.ui + 1;
         }
     }
   else
@@ -621,21 +624,21 @@ toDoubleHighPrecision (uint64_t * arg, int32_t length)
             {
               mantissa = arg[length];
             }
-          DOUBLE_TO_LONGBITS (result) =
+          result.ui =
             CREATE_DOUBLE_BITS (mantissa, length * 64 - highBit);
 
           /* perform rounding, round to even in case of tie */
           test64 = arg[--length] << highBit;
           if (test64 > SIGN_MASK || ((test64 == SIGN_MASK) && (mantissa & 1)))
-            DOUBLE_TO_LONGBITS (result) = DOUBLE_TO_LONGBITS (result) + 1;
+            result.ui = result.ui + 1;
           else if (test64 == SIGN_MASK)
             {
               while (--length >= 0)
                 {
                   if (arg[length] != 0)
                     {
-                      DOUBLE_TO_LONGBITS (result) =
-                        DOUBLE_TO_LONGBITS (result) + 1;
+                      result.ui =
+                        result.ui + 1;
                       break;
                     }
                 }
@@ -645,21 +648,21 @@ toDoubleHighPrecision (uint64_t * arg, int32_t length)
         {
           highBit -= 53;
           mantissa = arg[length] >> highBit;
-          DOUBLE_TO_LONGBITS (result) =
+          result.ui =
             CREATE_DOUBLE_BITS (mantissa, length * 64 + highBit);
 
           /* perform rounding, round to even in case of tie */
           test = (LOW_U32_FROM_PTR (arg + length) << (11 - highBit)) & 0x7FF;
           if (test > 0x400 || ((test == 0x400) && (mantissa & 1)))
-            DOUBLE_TO_LONGBITS (result) = DOUBLE_TO_LONGBITS (result) + 1;
+            result.ui = result.ui + 1;
           else if (test == 0x400)
             {
               do
                 {
                   if (arg[--length] != 0)
                     {
-                      DOUBLE_TO_LONGBITS (result) =
-                        DOUBLE_TO_LONGBITS (result) + 1;
+                      result.ui =
+                        result.ui + 1;
                       break;
                     }
                 }
@@ -668,7 +671,7 @@ toDoubleHighPrecision (uint64_t * arg, int32_t length)
         }
     }
 
-  return result;
+  return result.dbl;
 }
 
 static uint64_t simpleMultiplyHighPrecision64(uint64_t* arg1, int32_t length, uint64_t arg2);
@@ -773,7 +776,12 @@ timesTenToTheEHighPrecision (uint64_t * result, int32_t length, jint e)
 uint64_t
 doubleMantissa (jdouble z)
 {
-  uint64_t m = DOUBLE_TO_LONGBITS (z);
+  union {
+      jdouble dbl;
+      uint64_t ui;
+  } u;
+  u.dbl = z;
+  uint64_t m = u.ui;
 
   if ((m & EXPONENT_MASK) != 0)
     m = (m & MANTISSA_MASK) | NORMAL_MASK;
@@ -798,7 +806,12 @@ doubleExponent (jdouble z)
 }
 
 uint32_t floatMantissa(jfloat z) {
-  uint32_t m = FLOAT_TO_INTBITS (z);
+  union {
+    jfloat f;
+    uint32_t ui;
+  } u;
+  u.f = z;
+  uint32_t m = u.ui;
 
   if ((m & FLOAT_EXPONENT_MASK) != 0)
     m = (m & FLOAT_MANTISSA_MASK) | FLOAT_NORMAL_MASK;
@@ -811,8 +824,13 @@ uint32_t floatMantissa(jfloat z) {
 int32_t
 floatExponent (jfloat z)
 {
+  union {
+    jfloat f;
+    uint32_t ui;
+  } u;
+  u.f = z;
   /* assumes positive float */
-  int32_t k = FLOAT_TO_INTBITS (z) >> 23;
+  int32_t k = u.ui >> 23;
   if (k)
     k -= FLOAT_E_OFFSET;
   else

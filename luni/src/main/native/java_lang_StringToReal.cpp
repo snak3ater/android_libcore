@@ -77,26 +77,26 @@
  */
 #define INCREMENT_DOUBLE(_x, _decCount, _incCount) \
     { \
-        ++DOUBLE_TO_LONGBITS(_x); \
+        ++_x; \
         _incCount++; \
         if( (_incCount > 2) && (_decCount > 2) ) { \
             if( _decCount > _incCount ) { \
-                DOUBLE_TO_LONGBITS(_x) += _decCount - _incCount; \
+                _x += _decCount - _incCount; \
             } else if( _incCount > _decCount ) { \
-                DOUBLE_TO_LONGBITS(_x) -= _incCount - _decCount; \
+                _x -= _incCount - _decCount; \
             } \
             break; \
         } \
     }
 #define DECREMENT_DOUBLE(_x, _decCount, _incCount) \
     { \
-        --DOUBLE_TO_LONGBITS(_x); \
+        --_x; \
         _decCount++; \
         if( (_incCount > 2) && (_decCount > 2) ) { \
             if( _decCount > _incCount ) { \
-                DOUBLE_TO_LONGBITS(_x) += _decCount - _incCount; \
+                _x += _decCount - _incCount; \
             } else if( _incCount > _decCount ) { \
-                DOUBLE_TO_LONGBITS(_x) -= _incCount - _decCount; \
+                _x -= _incCount - _decCount; \
             } \
             break; \
         } \
@@ -155,9 +155,13 @@ static jdouble createDouble(JNIEnv* env, const char* s, jint e) {
   uint64_t* g;
   uint64_t* tempBackup;
   uint32_t overflow;
-  jdouble result;
   int32_t index = 1;
   int unprocessedDigits = 0;
+
+  union {
+    jdouble dbl;
+    uint64_t ui;
+  } result;
 
   f = def;
   fNoOverflow = defBackup;
@@ -217,18 +221,18 @@ static jdouble createDouble(JNIEnv* env, const char* s, jint e) {
       if (index > -1)
         {
           if (e == 0)
-            result = toDoubleHighPrecision (f, index);
+            result.dbl = toDoubleHighPrecision (f, index);
           else if (e < 0)
-            result = createDouble1 (env, f, index, e);
+            result.dbl = createDouble1 (env, f, index, e);
           else
             {
-              DOUBLE_TO_LONGBITS (result) = DOUBLE_INFINITE_LONGBITS;
+              result.ui = DOUBLE_INFINITE_LONGBITS;
             }
         }
       else
         {
-          LOW_I32_FROM_VAR  (result) = -1;
-          HIGH_I32_FROM_VAR (result) = -1;
+          LOW_I32_FROM_VAR  (result.dbl) = -1;
+          HIGH_I32_FROM_VAR (result.dbl) = -1;
         }
     }
   else
@@ -236,24 +240,27 @@ static jdouble createDouble(JNIEnv* env, const char* s, jint e) {
       if (index > -1)
         {
           if (e == 0)
-            result = toDoubleHighPrecision (f, index);
+            result.dbl = toDoubleHighPrecision (f, index);
           else
-            result = createDouble1 (env, f, index, e);
+            result.dbl = createDouble1 (env, f, index, e);
         }
       else
         {
-          LOW_I32_FROM_VAR  (result) = -1;
-          HIGH_I32_FROM_VAR (result) = -1;
+          LOW_I32_FROM_VAR  (result.dbl) = -1;
+          HIGH_I32_FROM_VAR (result.dbl) = -1;
         }
     }
 
-  return result;
+  return result.dbl;
 
 }
 
 static jdouble createDouble1(JNIEnv* env, uint64_t* f, int32_t length, jint e) {
   int32_t numBits;
-  jdouble result;
+  union {
+    jdouble dbl;
+    uint64_t ui;
+  } result;
 
   static const jint APPROX_MIN_MAGNITUDE = -309;
   static const jint APPROX_MAX_MAGNITUDE = 309;
@@ -270,38 +277,38 @@ static jdouble createDouble1(JNIEnv* env, uint64_t* f, int32_t length, jint e) {
     }
   else if (e >= 0 && e < APPROX_MAX_MAGNITUDE)
     {
-      result = toDoubleHighPrecision (f, length) * pow (10.0, e);
+      result.dbl = toDoubleHighPrecision (f, length) * pow (10.0, e);
     }
   else if (e >= APPROX_MAX_MAGNITUDE)
     {
       /* Convert the partial result to make sure that the
        * non-exponential part is not zero. This check fixes the case
        * where the user enters 0.0e309! */
-      result = toDoubleHighPrecision (f, length);
+      result.dbl = toDoubleHighPrecision (f, length);
       /* Don't go straight to zero as the fact that x*0 = 0 independent of x might
          cause the algorithm to produce an incorrect result.  Instead try the min value
          first and let it fall to zero if need be. */
 
-      if (result == 0.0)
+      if (result.dbl == 0.0)
         {
-          DOUBLE_TO_LONGBITS (result) = DOUBLE_MINIMUM_LONGBITS;
+          result.ui = DOUBLE_MINIMUM_LONGBITS;
         }
       else
         {
-          DOUBLE_TO_LONGBITS (result) = DOUBLE_INFINITE_LONGBITS;
-          return result;
+          result.ui = DOUBLE_INFINITE_LONGBITS;
+          return result.dbl;
         }
     }
   else if (e > APPROX_MIN_MAGNITUDE)
     {
-      result = toDoubleHighPrecision (f, length) / pow (10.0, -e);
+      result.dbl = toDoubleHighPrecision (f, length) / pow (10.0, -e);
     }
 
   if (e <= APPROX_MIN_MAGNITUDE)
     {
 
-      result = toDoubleHighPrecision (f, length) * pow (10.0, e + 52);
-      result = result * pow (10.0, -52);
+      result.dbl = toDoubleHighPrecision (f, length) * pow (10.0, e + 52);
+      result.dbl = result.dbl * pow (10.0, -52);
 
     }
 
@@ -309,11 +316,11 @@ static jdouble createDouble1(JNIEnv* env, uint64_t* f, int32_t length, jint e) {
      cause the algorithm to produce an incorrect result.  Instead try the min value
      first and let it fall to zero if need be. */
 
-  if (result == 0.0)
+  if (result.dbl == 0.0)
 
-    DOUBLE_TO_LONGBITS (result) = DOUBLE_MINIMUM_LONGBITS;
+    result.ui = DOUBLE_MINIMUM_LONGBITS;
 
-  return doubleAlgorithm (env, f, length, e, result);
+  return doubleAlgorithm (env, f, length, e, result.dbl);
 }
 
 /* The algorithm for the function doubleAlgorithm() below can be found
@@ -342,14 +349,20 @@ static jdouble doubleAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e,
   uint64_t* D2;
   int32_t xLength, yLength, DLength, D2Length, decApproxCount, incApproxCount;
 
+  union {
+    jdouble dbl;
+    uint64_t ui;
+  } zu;
+  zu.dbl = z;
+
   x = y = D = D2 = 0;
   xLength = yLength = DLength = D2Length = 0;
   decApproxCount = incApproxCount = 0;
 
   do
     {
-      m = doubleMantissa (z);
-      k = doubleExponent (z);
+      m = doubleMantissa (zu.dbl);
+      k = doubleExponent (zu.dbl);
 
       if (x && x != f)
           free(x);
@@ -448,7 +461,7 @@ static jdouble doubleAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e,
               simpleShiftLeftHighPrecision (D2, D2Length, 1);
               if (compareHighPrecision (D2, D2Length, y, yLength) > 0)
                 {
-                  DECREMENT_DOUBLE (z, decApproxCount, incApproxCount);
+                  DECREMENT_DOUBLE (zu.ui, decApproxCount, incApproxCount);
                 }
               else
                 {
@@ -466,7 +479,7 @@ static jdouble doubleAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e,
             {
               if (comparison < 0 && m == DOUBLE_NORMAL_MASK)
                 {
-                  DECREMENT_DOUBLE (z, decApproxCount, incApproxCount);
+                  DECREMENT_DOUBLE (zu.ui, decApproxCount, incApproxCount);
                 }
               else
                 {
@@ -475,24 +488,24 @@ static jdouble doubleAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e,
             }
           else if (comparison < 0)
             {
-              DECREMENT_DOUBLE (z, decApproxCount, incApproxCount);
+              DECREMENT_DOUBLE (zu.ui, decApproxCount, incApproxCount);
               break;
             }
           else
             {
-              INCREMENT_DOUBLE (z, decApproxCount, incApproxCount);
+              INCREMENT_DOUBLE (zu.ui, decApproxCount, incApproxCount);
               break;
             }
         }
       else if (comparison < 0)
         {
-          DECREMENT_DOUBLE (z, decApproxCount, incApproxCount);
+          DECREMENT_DOUBLE (zu.ui, decApproxCount, incApproxCount);
         }
       else
         {
-          if (DOUBLE_TO_LONGBITS (z) == DOUBLE_INFINITE_LONGBITS)
+          if (zu.ui == DOUBLE_INFINITE_LONGBITS)
             break;
-          INCREMENT_DOUBLE (z, decApproxCount, incApproxCount);
+          INCREMENT_DOUBLE (zu.ui, decApproxCount, incApproxCount);
         }
     }
   while (1);
@@ -502,7 +515,7 @@ static jdouble doubleAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e,
   free(y);
   free(D);
   free(D2);
-  return z;
+  return zu.dbl;
 
 OutOfMemory:
   if (x && x != f)
@@ -511,7 +524,7 @@ OutOfMemory:
   free(D);
   free(D2);
   jniThrowOutOfMemoryError(env, NULL);
-  return z;
+  return zu.dbl;
 }
 
 
@@ -558,26 +571,26 @@ static const uint32_t float_tens[] = {
  */
 #define INCREMENT_FLOAT(_x, _decCount, _incCount) \
     { \
-        ++FLOAT_TO_INTBITS(_x); \
+        ++_x; \
         _incCount++; \
         if( (_incCount > 2) && (_decCount > 2) ) { \
             if( _decCount > _incCount ) { \
-                FLOAT_TO_INTBITS(_x) += _decCount - _incCount; \
+                _x += _decCount - _incCount; \
             } else if( _incCount > _decCount ) { \
-                FLOAT_TO_INTBITS(_x) -= _incCount - _decCount; \
+                _x -= _incCount - _decCount; \
             } \
             break; \
         } \
     }
 #define DECREMENT_FLOAT(_x, _decCount, _incCount) \
     { \
-        --FLOAT_TO_INTBITS(_x); \
+        --_x; \
         _decCount++; \
         if( (_incCount > 2) && (_decCount > 2) ) { \
             if( _decCount > _incCount ) { \
-                FLOAT_TO_INTBITS(_x) += _decCount - _incCount; \
+                _x += _decCount - _incCount; \
             } else if( _incCount > _decCount ) { \
-                FLOAT_TO_INTBITS(_x) -= _incCount - _decCount; \
+                _x -= _incCount - _decCount; \
             } \
             break; \
         } \
@@ -593,9 +606,12 @@ static jfloat createFloat(JNIEnv* env, const char* s, jint e) {
   uint64_t* g;
   uint64_t* tempBackup;
   uint32_t overflow;
-  jfloat result;
   int32_t index = 1;
   int unprocessedDigits = 0;
+  union {
+    jfloat f;
+    uint32_t ui;
+  } result;
 
   f = def;
   fNoOverflow = defBackup;
@@ -657,38 +673,41 @@ static jfloat createFloat(JNIEnv* env, const char* s, jint e) {
         {
           if (e <= 0)
             {
-              result = createFloat1 (env, f, index, e);
+              result.f = createFloat1 (env, f, index, e);
             }
           else
             {
-              FLOAT_TO_INTBITS (result) = FLOAT_INFINITE_INTBITS;
+              result.ui = FLOAT_INFINITE_INTBITS;
             }
         }
       else
         {
-          result = INTBITS_TO_FLOAT(index);
+          result.ui = index;
         }
     }
   else
     {
       if (index > -1)
         {
-          result = createFloat1 (env, f, index, e);
+          result.f = createFloat1 (env, f, index, e);
         }
       else
         {
-          result = INTBITS_TO_FLOAT(index);
+          result.ui = index;
         }
     }
 
-  return result;
+  return result.f;
 
 }
 
 static jfloat createFloat1 (JNIEnv* env, uint64_t* f, int32_t length, jint e) {
   int32_t numBits;
   jdouble dresult;
-  jfloat result;
+  union {
+    jfloat f;
+    uint32_t ui;
+  } result;
 
   numBits = highestSetBitHighPrecision (f, length) + 1;
   if (numBits < 25 && e >= 0 && e < FLOAT_LOG5_OF_TWO_TO_THE_N)
@@ -701,20 +720,20 @@ static jfloat createFloat1 (JNIEnv* env, uint64_t* f, int32_t length, jint e) {
     }
   else if (e >= 0 && e < 39)
     {
-      result = (jfloat) (toDoubleHighPrecision (f, length) * pow (10.0, (double) e));
+      result.f = (jfloat) (toDoubleHighPrecision (f, length) * pow (10.0, (double) e));
     }
   else if (e >= 39)
     {
       /* Convert the partial result to make sure that the
        * non-exponential part is not zero. This check fixes the case
        * where the user enters 0.0e309! */
-      result = (jfloat) toDoubleHighPrecision (f, length);
+      result.f = (jfloat) toDoubleHighPrecision (f, length);
 
-      if (result == 0.0)
+      if (result.f == 0.0)
 
-        FLOAT_TO_INTBITS (result) = FLOAT_MINIMUM_INTBITS;
+        result.ui = FLOAT_MINIMUM_INTBITS;
       else
-        FLOAT_TO_INTBITS (result) = FLOAT_INFINITE_INTBITS;
+        result.ui = FLOAT_INFINITE_INTBITS;
     }
   else if (e > -309)
     {
@@ -724,8 +743,8 @@ static jfloat createFloat1 (JNIEnv* env, uint64_t* f, int32_t length, jint e) {
       dresult = toDoubleHighPrecision (f, length) / pow (10.0, (double) -e);
       if (IS_DENORMAL_DBL (dresult))
         {
-          FLOAT_TO_INTBITS (result) = 0;
-          return result;
+          result.ui = 0;
+          return result.f;
         }
       dexp = doubleExponent (dresult) + 51;
       dmant = doubleMantissa (dresult);
@@ -733,8 +752,8 @@ static jfloat createFloat1 (JNIEnv* env, uint64_t* f, int32_t length, jint e) {
        * float? */
       if (dexp <= -155)
         {
-          FLOAT_TO_INTBITS (result) = 0;
-          return result;
+          result.ui = 0;
+          return result.f;
         }
       /* Is it a denormalized single-precision float? */
       if ((dexp <= -127) && (dexp > -155))
@@ -770,11 +789,11 @@ static jfloat createFloat1 (JNIEnv* env, uint64_t* f, int32_t length, jint e) {
                   fmant++;
                 }
             }
-          FLOAT_TO_INTBITS (result) = fmant;
+          result.ui = fmant;
         }
       else
         {
-          result = (jfloat) dresult;
+          result.f = (jfloat) dresult;
         }
     }
 
@@ -783,10 +802,10 @@ static jfloat createFloat1 (JNIEnv* env, uint64_t* f, int32_t length, jint e) {
    * Instead try the min  value first and let it fall to zero if need
    * be.
    */
-  if (e <= -309 || FLOAT_TO_INTBITS (result) == 0)
-    FLOAT_TO_INTBITS (result) = FLOAT_MINIMUM_INTBITS;
+  if (e <= -309 || result.ui == 0)
+    result.ui = FLOAT_MINIMUM_INTBITS;
 
-  return floatAlgorithm (env, f, length, e, (jfloat) result);
+  return floatAlgorithm (env, f, length, e, result.f);
 }
 
 /* The algorithm for the function floatAlgorithm() below can be found
@@ -815,6 +834,11 @@ static jfloat floatAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e, j
   uint64_t* D2;
   int32_t xLength, yLength, DLength, D2Length;
   int32_t decApproxCount, incApproxCount;
+  union {
+    jfloat f;
+    uint32_t ui;
+  } zu;
+  zu.f = z;
 
   x = y = D = D2 = 0;
   xLength = yLength = DLength = D2Length = 0;
@@ -822,8 +846,8 @@ static jfloat floatAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e, j
 
   do
     {
-      m = floatMantissa (z);
-      k = floatExponent (z);
+      m = floatMantissa (zu.f);
+      k = floatExponent (zu.f);
 
       if (x && x != f)
           free(x);
@@ -922,7 +946,7 @@ static jfloat floatAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e, j
               simpleShiftLeftHighPrecision (D2, D2Length, 1);
               if (compareHighPrecision (D2, D2Length, y, yLength) > 0)
                 {
-                  DECREMENT_FLOAT (z, decApproxCount, incApproxCount);
+                  DECREMENT_FLOAT (zu.ui, decApproxCount, incApproxCount);
                 }
               else
                 {
@@ -940,7 +964,7 @@ static jfloat floatAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e, j
             {
               if (comparison < 0 && m == FLOAT_NORMAL_MASK)
                 {
-                  DECREMENT_FLOAT (z, decApproxCount, incApproxCount);
+                  DECREMENT_FLOAT (zu.ui, decApproxCount, incApproxCount);
                 }
               else
                 {
@@ -949,24 +973,24 @@ static jfloat floatAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e, j
             }
           else if (comparison < 0)
             {
-              DECREMENT_FLOAT (z, decApproxCount, incApproxCount);
+              DECREMENT_FLOAT (zu.ui, decApproxCount, incApproxCount);
               break;
             }
           else
             {
-              INCREMENT_FLOAT (z, decApproxCount, incApproxCount);
+              INCREMENT_FLOAT (zu.ui, decApproxCount, incApproxCount);
               break;
             }
         }
       else if (comparison < 0)
         {
-          DECREMENT_FLOAT (z, decApproxCount, incApproxCount);
+          DECREMENT_FLOAT (zu.ui, decApproxCount, incApproxCount);
         }
       else
         {
-          if (FLOAT_TO_INTBITS (z) == FLOAT_EXPONENT_MASK)
+          if (zu.ui == FLOAT_EXPONENT_MASK)
             break;
-          INCREMENT_FLOAT (z, decApproxCount, incApproxCount);
+          INCREMENT_FLOAT (zu.ui, decApproxCount, incApproxCount);
         }
     }
   while (1);
@@ -976,7 +1000,7 @@ static jfloat floatAlgorithm(JNIEnv* env, uint64_t* f, int32_t length, jint e, j
   free(y);
   free(D);
   free(D2);
-  return z;
+  return zu.f;
 
 OutOfMemory:
   if (x && x != f)
@@ -985,7 +1009,7 @@ OutOfMemory:
   free(D);
   free(D2);
   jniThrowOutOfMemoryError(env, NULL);
-  return z;
+  return zu.f;
 }
 
 static jfloat StringToReal_parseFltImpl(JNIEnv* env, jclass, jstring s, jint e) {
